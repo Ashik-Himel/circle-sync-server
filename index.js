@@ -1,0 +1,64 @@
+const express = require('express');
+const cors = require('cors');
+const { MongoClient, ServerApiVersion } = require('mongodb');
+const jwt = require('jsonwebtoken');
+const cookieParser = require('cookie-parser');
+require('dotenv').config();
+
+const app = express();
+const port = process.env.PORT || 5001;
+
+app.use(cors({
+  origin: [
+    'http://localhost:5173',
+    'https://circle-sync-1.web.app',
+    'https://circle-sync-1.firebaseapp.com'
+  ]
+}));
+app.use(express.json());
+app.use(cookieParser());
+
+
+const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.xeaidsx.mongodb.net/?retryWrites=true&w=majority`;
+
+const client = new MongoClient(uri, {
+  serverApi: {
+    version: ServerApiVersion.v1,
+    strict: true,
+    deprecationErrors: true,
+  }
+});
+
+async function run() {
+  try {
+    const database = client.db('circle-sync');
+    const tagCollection = database.collection('tags');
+
+    // Tags Api
+    app.get('/tags', async(req, res) => {
+      const result = await tagCollection.find().toArray();
+      res.send(result);
+    })
+    app.post('/tags', async(req, res) => {
+      const result = await tagCollection.insertOne(req.body);
+      res.send(result);
+    })
+    
+
+    await client.db("admin").command({ ping: 1 });
+    console.log("MongoDB Connected!");
+  } finally {
+    // await client.close();
+  }
+}
+run().catch(console.dir);
+
+
+app.get('/', (req, res) => {
+  res.send("Welcome to CircleSync's Server!");
+})
+app.listen(port, () => {
+  console.log(`Server is running on http://localhost:${port} !`);
+})
+
+module.exports = app;
