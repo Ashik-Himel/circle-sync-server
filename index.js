@@ -101,6 +101,11 @@ async function run() {
       const result = await commentCollection.insertOne(req.body);
       res.send(result);
     })
+    app.get('/comments/:id', async(req, res) => {
+      const filter = {postId: req.params.id};
+      const result = await commentCollection.find(filter).toArray();
+      res.send(result);
+    })
     app.get('/comments/:id/count', async(req, res) => {
       const filter = {postId: req.params.id};
       const result = (await commentCollection.countDocuments(filter)).toString();
