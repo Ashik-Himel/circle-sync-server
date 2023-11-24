@@ -33,6 +33,7 @@ async function run() {
   try {
     const database = client.db('circle-sync');
     const tagCollection = database.collection('tags');
+    const announcementCollection = database.collection('announcements');
 
     // Tags Api
     app.get('/tags', async(req, res) => {
@@ -41,6 +42,20 @@ async function run() {
     })
     app.post('/tags', async(req, res) => {
       const result = await tagCollection.insertOne(req.body);
+      res.send(result);
+    })
+
+    // Announcements Api
+    app.get('/announcements', async(req, res) => {
+      const result = await announcementCollection.find().toArray();
+      res.send(result);
+    })
+    app.post('/announcements', async(req, res) => {
+      const result = await announcementCollection.insertOne(req.body);
+      res.send(result);
+    })
+    app.get('/announcements/count', async(req, res) => {
+      const result = (await announcementCollection.countDocuments()).toString();
       res.send(result);
     })
     
