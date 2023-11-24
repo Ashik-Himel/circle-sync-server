@@ -1,6 +1,6 @@
 const express = require('express');
 const cors = require('cors');
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const jwt = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
 require('dotenv').config();
@@ -34,6 +34,8 @@ async function run() {
     const database = client.db('circle-sync');
     const tagCollection = database.collection('tags');
     const announcementCollection = database.collection('announcements');
+    const postCollection = database.collection('posts');
+    const commentCollection = database.collection('comments');
 
     // Tags Api
     app.get('/tags', async(req, res) => {
@@ -56,6 +58,52 @@ async function run() {
     })
     app.get('/announcements/count', async(req, res) => {
       const result = (await announcementCollection.countDocuments()).toString();
+      res.send(result);
+    })
+
+    // Posts Api
+    app.get('/posts', async(req, res) => {
+      const sortByPopularity = req.query.popularity;
+      let aggregationPipeline = [
+        {
+          $sort : {publishedTime: -1}
+        }
+      ];
+      if (sortByPopularity === 'true') {
+        aggregationPipeline = [
+          {
+            $addFields: {
+              voteDiff : {
+                $subtract: ['$upVote', '$downVote']
+              }
+            }
+          },
+          {
+            $sort: {voteDiff: -1}
+          }
+        ]
+      }
+      const result = await postCollection.aggregate(aggregationPipeline).toArray();
+      res.send(result);
+    });
+    app.post('/posts', async(req, res) => {
+      const result = await postCollection.insertOne(req.body);
+      res.send(result);
+    })
+    app.get('/posts/:id', async(req, res) => {
+      const filter = {_id: new ObjectId(req.params.id)};
+      const result = await postCollection.findOne(filter);
+      res.send(result);
+    })
+
+    // Comments Api
+    app.post('/comments', async(req, res) => {
+      const result = await commentCollection.insertOne(req.body);
+      res.send(result);
+    })
+    app.get('/comments/:id/count', async(req, res) => {
+      const filter = {postId: req.params.id};
+      const result = (await commentCollection.countDocuments(filter)).toString();
       res.send(result);
     })
     
