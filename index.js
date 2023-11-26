@@ -102,6 +102,18 @@ async function run() {
       const result = (await postCollection.countDocuments(filter)).toString();
       res.send(result);
     })
+    app.get('/totalPostsCount', async(req, res) => {
+      const result = (await postCollection.countDocuments()).toString();
+      res.send(result);
+    })
+    app.get('/posts/user/:email', async(req, res) => {
+      const filter = {'author.email': req.params.email};
+      const option = {
+        $sort : {publishedTime: -1}
+      }
+      const result = await postCollection.find(filter, option).toArray();
+      res.send(result);
+    })
 
     // Comments Api
     app.post('/comments', async(req, res) => {
@@ -121,6 +133,10 @@ async function run() {
     app.get('/commentsCount', async(req, res) => {
       const filter = {postAuthorEmail: req.query?.email};
       const result = (await commentCollection.countDocuments(filter)).toString();
+      res.send(result);
+    })
+    app.get('/totalCommentsCount', async(req, res) => {
+      const result = (await commentCollection.countDocuments()).toString();
       res.send(result);
     })
 
@@ -143,14 +159,14 @@ async function run() {
           res.cookie("token", token, {
             httpOnly: true,
             secure: false,
-            sameSite: "none",
+            // sameSite: "none",
             maxAge: 7 * 24 * 60 * 60 * 1000
           }).send(result);
         } else {
           res.cookie("token", token, {
             httpOnly: true,
             secure: false,
-            sameSite: "none",
+            // sameSite: "none",
             maxAge: 7 * 24 * 60 * 60 * 1000
           }).send(userMatched);
         }
