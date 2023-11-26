@@ -58,7 +58,7 @@ async function run() {
       const result = await announcementCollection.insertOne(req.body);
       res.send(result);
     })
-    app.get('/announcements/count', async(req, res) => {
+    app.get('/announcementsCount', async(req, res) => {
       const result = (await announcementCollection.countDocuments()).toString();
       res.send(result);
     })
@@ -97,6 +97,11 @@ async function run() {
       const result = await postCollection.findOne(filter);
       res.send(result);
     })
+    app.get('/postsCount', async(req, res) => {
+      const filter = {'author.email': req.query?.email};
+      const result = (await postCollection.countDocuments(filter)).toString();
+      res.send(result);
+    })
 
     // Comments Api
     app.post('/comments', async(req, res) => {
@@ -110,6 +115,11 @@ async function run() {
     })
     app.get('/comments/:id/count', async(req, res) => {
       const filter = {postId: req.params.id};
+      const result = (await commentCollection.countDocuments(filter)).toString();
+      res.send(result);
+    })
+    app.get('/commentsCount', async(req, res) => {
+      const filter = {postAuthorEmail: req.query?.email};
       const result = (await commentCollection.countDocuments(filter)).toString();
       res.send(result);
     })
@@ -148,6 +158,11 @@ async function run() {
     })
     app.get('/logout', (req, res) => {
       res.clearCookie('token').send("Ok");
+    })
+    app.get('/usersCount', async(req, res) => {
+      const totalUsers = (await userCollection.countDocuments()).toString();
+      const goldUsers = (await userCollection.countDocuments({role: "gold"})).toString();
+      res.send({totalUsers, goldUsers});
     })
     
 
