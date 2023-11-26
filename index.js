@@ -13,7 +13,8 @@ app.use(cors({
     'http://localhost:5173',
     'https://circle-sync-1.web.app',
     'https://circle-sync-1.firebaseapp.com'
-  ]
+  ],
+  credentials: true
 }));
 app.use(express.json());
 app.use(cookieParser());
@@ -36,6 +37,7 @@ async function run() {
     const announcementCollection = database.collection('announcements');
     const postCollection = database.collection('posts');
     const commentCollection = database.collection('comments');
+    const userCollection = database.collection('users');
 
     // Tags Api
     app.get('/tags', async(req, res) => {
@@ -110,6 +112,42 @@ async function run() {
       const filter = {postId: req.params.id};
       const result = (await commentCollection.countDocuments(filter)).toString();
       res.send(result);
+    })
+
+    // Users Api
+    app.post('/users', async(req, res) => {
+      const data = req.body;
+      const filter = {email: data?.email};
+      const userMatched = await userCollection.findOne(filter);
+
+      if (req.body?.setToken === false) {
+        res.send(userMatched);
+      } else {
+        const token = jwt.sign({email: req.body?.email}, process.env.JWT_SECRET, {expiresIn: "7d"});
+        if (!userMatched) {
+          const document = {
+            email: req.body?.email,
+            role: "bronze"
+          }
+          const result = await userCollection.insertOne(document);
+          res.cookie("token", token, {
+            httpOnly: true,
+            secure: false,
+            sameSite: "none",
+            maxAge: 7 * 24 * 60 * 60 * 1000
+          }).send(result);
+        } else {
+          res.cookie("token", token, {
+            httpOnly: true,
+            secure: false,
+            sameSite: "none",
+            maxAge: 7 * 24 * 60 * 60 * 1000
+          }).send(userMatched);
+        }
+      }
+    })
+    app.get('/logout', (req, res) => {
+      res.clearCookie('token').send("Ok");
     })
     
 
