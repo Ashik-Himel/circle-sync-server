@@ -97,6 +97,13 @@ async function run() {
       const result = await postCollection.findOne(filter);
       res.send(result);
     })
+    app.delete('/posts/:id', async(req, res) => {
+      const filter = {_id: new ObjectId(req.params.id)};
+      const result = await postCollection.deleteOne(filter);
+      const filter2 = {postId: req.params.id}
+      const result2 = await commentCollection.deleteMany(filter2);
+      res.send(result);
+    })
     app.get('/postsCount', async(req, res) => {
       const filter = {'author.email': req.query?.email};
       const result = (await postCollection.countDocuments(filter)).toString();
@@ -125,6 +132,14 @@ async function run() {
       const result = await commentCollection.find(filter).toArray();
       res.send(result);
     })
+    app.put('/comments/:id', async(req, res) => {
+      const filter = {_id: new ObjectId(req.params.id)};
+      const updatedInfo = {
+        $set: req.body
+      }
+      const result = await commentCollection.updateOne(filter, updatedInfo);
+      res.send(result);
+    })
     app.get('/comments/:id/count', async(req, res) => {
       const filter = {postId: req.params.id};
       const result = (await commentCollection.countDocuments(filter)).toString();
@@ -136,8 +151,10 @@ async function run() {
       res.send(result);
     })
     app.get('/totalCommentsCount', async(req, res) => {
-      const result = (await commentCollection.countDocuments()).toString();
-      res.send(result);
+      const filter = {reportStatus: "Reported"}
+      const totalComments = (await commentCollection.countDocuments()).toString();
+      const totalReportedComments = (await commentCollection.countDocuments(filter)).toString();
+      res.send({totalComments, totalReportedComments});
     })
 
     // Users Api
