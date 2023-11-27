@@ -19,6 +19,18 @@ app.use(cors({
 app.use(express.json());
 app.use(cookieParser());
 
+// Middlewares
+const verify = (req, res, next) => {
+  const token = req.cookies?.token;
+  if (!token) return res.sendStatus(401).send("Unauthorized access");
+
+  jwt.verify(token, process.env.JWT_SECRET, (err, decode) => {
+    if (err || req.headers?.authorization !== decode?.email) return res.sendStatus(403).send("Forbidden");
+
+    next();
+  })
+}
+
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.xeaidsx.mongodb.net/?retryWrites=true&w=majority`;
 
@@ -33,34 +45,64 @@ const client = new MongoClient(uri, {
 async function run() {
   try {
     const database = client.db('circle-sync');
-    const tagCollection = database.collection('tags');
-    const announcementCollection = database.collection('announcements');
+    const userCollection = database.collection('users');
     const postCollection = database.collection('posts');
     const commentCollection = database.collection('comments');
-    const userCollection = database.collection('users');
+    const tagCollection = database.collection('tags');
+    const announcementCollection = database.collection('announcements');
 
-    // Tags Api
-    app.get('/tags', async(req, res) => {
-      const result = await tagCollection.find().toArray();
+    // Users Api
+    app.get('/users', async(req, res) => {
+      const result = await userCollection.find().toArray();
       res.send(result);
     })
-    app.post('/tags', async(req, res) => {
-      const result = await tagCollection.insertOne(req.body);
-      res.send(result);
-    })
+    app.post('/users', async(req, res) => {
+      const data = req.body;
+      const filter = {email: data?.email};
+      const userMatched = await userCollection.findOne(filter);
 
-    // Announcements Api
-    app.get('/announcements', async(req, res) => {
-      const result = await announcementCollection.find().toArray();
+      if (req.body?.setToken === false) {
+        res.send(userMatched);
+      } else {
+        const token = jwt.sign({email: req.body?.email}, process.env.JWT_SECRET, {expiresIn: "7d"});
+        if (!userMatched) {
+          const document = {
+            name: req.body?.name,
+            email: req.body?.email,
+            role: "bronze"
+          }
+          const result = await userCollection.insertOne(document);
+          res.cookie("token", token, {
+            httpOnly: true,
+            secure: true,
+            sameSite: "none",
+            maxAge: 7 * 24 * 60 * 60 * 1000
+          }).send(result);
+        } else {
+          res.cookie("token", token, {
+            httpOnly: true,
+            secure: true,
+            sameSite: "none",
+            maxAge: 7 * 24 * 60 * 60 * 1000
+          }).send(userMatched);
+        }
+      }
+    })
+    app.put('/users/:id', async(req, res) => {
+      const filter = {_id: new ObjectId(req.params.id)};
+      const document = {
+        $set: req.body
+      }
+      const result = await userCollection.updateOne(filter, document);
       res.send(result);
     })
-    app.post('/announcements', async(req, res) => {
-      const result = await announcementCollection.insertOne(req.body);
-      res.send(result);
+    app.get('/logout', (req, res) => {
+      res.clearCookie('token').send("Ok");
     })
-    app.get('/announcementsCount', async(req, res) => {
-      const result = (await announcementCollection.countDocuments()).toString();
-      res.send(result);
+    app.get('/usersCount', async(req, res) => {
+      const totalUsers = (await userCollection.countDocuments()).toString();
+      const goldUsers = (await userCollection.countDocuments({role: "gold"})).toString();
+      res.send({totalUsers, goldUsers});
     })
 
     // Posts Api
@@ -151,51 +193,52 @@ async function run() {
       res.send(result);
     })
     app.get('/totalCommentsCount', async(req, res) => {
-      const filter = {reportStatus: "Reported"}
+      const filter = {reportStatus: "Reported"};
       const totalComments = (await commentCollection.countDocuments()).toString();
       const totalReportedComments = (await commentCollection.countDocuments(filter)).toString();
       res.send({totalComments, totalReportedComments});
     })
-
-    // Users Api
-    app.post('/users', async(req, res) => {
-      const data = req.body;
-      const filter = {email: data?.email};
-      const userMatched = await userCollection.findOne(filter);
-
-      if (req.body?.setToken === false) {
-        res.send(userMatched);
-      } else {
-        const token = jwt.sign({email: req.body?.email}, process.env.JWT_SECRET, {expiresIn: "7d"});
-        if (!userMatched) {
-          const document = {
-            email: req.body?.email,
-            role: "bronze"
-          }
-          const result = await userCollection.insertOne(document);
-          res.cookie("token", token, {
-            httpOnly: true,
-            secure: false,
-            sameSite: "none",
-            maxAge: 7 * 24 * 60 * 60 * 1000
-          }).send(result);
-        } else {
-          res.cookie("token", token, {
-            httpOnly: true,
-            secure: false,
-            sameSite: "none",
-            maxAge: 7 * 24 * 60 * 60 * 1000
-          }).send(userMatched);
-        }
+    app.get('/reportedComments', async(req, res) => {
+      const filter = {reportStatus: "Reported"};
+      const result = await commentCollection.find(filter).toArray();
+      res.send(result);
+    })
+    app.put('/reportedComments/:id', async(req, res) => {
+      const filter = {_id: new ObjectId(req.params.id)};
+      const document = {
+        $set: req.body
       }
+      const result = await commentCollection.updateOne(filter, document);
+      res.send(result);
     })
-    app.get('/logout', (req, res) => {
-      res.clearCookie('token').send("Ok");
+    app.delete('/reportedComments/:id', async(req, res) => {
+      const filter = {_id: new ObjectId(req.params.id)};
+      const result = await commentCollection.deleteOne(filter);
+      res.send(result);
     })
-    app.get('/usersCount', async(req, res) => {
-      const totalUsers = (await userCollection.countDocuments()).toString();
-      const goldUsers = (await userCollection.countDocuments({role: "gold"})).toString();
-      res.send({totalUsers, goldUsers});
+
+    // Tags Api
+    app.get('/tags', async(req, res) => {
+      const result = await tagCollection.find().toArray();
+      res.send(result);
+    })
+    app.post('/tags', async(req, res) => {
+      const result = await tagCollection.insertOne(req.body);
+      res.send(result);
+    })
+
+    // Announcements Api
+    app.get('/announcements', async(req, res) => {
+      const result = await announcementCollection.find().toArray();
+      res.send(result);
+    })
+    app.post('/announcements', async(req, res) => {
+      const result = await announcementCollection.insertOne(req.body);
+      res.send(result);
+    })
+    app.get('/announcementsCount', async(req, res) => {
+      const result = (await announcementCollection.countDocuments()).toString();
+      res.send(result);
     })
     
 
