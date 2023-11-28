@@ -10,7 +10,7 @@ const port = process.env.PORT || 5001;
 
 app.use(cors({
   origin: [
-    // 'http://localhost:5173',
+    'http://localhost:5173',
     'https://circle-sync-1.web.app',
     'https://circle-sync-1.firebaseapp.com'
   ],
@@ -35,6 +35,7 @@ async function run() {
     const database = client.db('circle-sync');
     const userCollection = database.collection('users');
     const postCollection = database.collection('posts');
+    const voteCollection = database.collection('votes');
     const commentCollection = database.collection('comments');
     const tagCollection = database.collection('tags');
     const announcementCollection = database.collection('announcements');
@@ -72,7 +73,7 @@ async function run() {
       res.send(result);
     })
     app.get('/users', verifyUser, verifyAdmin, async(req, res) => {
-      const result = await userCollection.find().toArray();
+      const result = await userCollection.find().skip(req.query?.skip * 10).limit(10).toArray();
       res.send(result);
     })
     app.post('/users', async(req, res) => {
@@ -80,8 +81,8 @@ async function run() {
       const filter = {email: req.body?.email};
       const config = {
         httpOnly: true,
-        secure: true,
-        sameSite: "none",
+        secure: false,
+        // sameSite: "none",
         maxAge: 7 * 24 * 60 * 60 * 1000
       };
       const userMatched = await userCollection.findOne(filter);
@@ -137,7 +138,7 @@ async function run() {
           }
         ]
       }
-      const result = await postCollection.aggregate(aggregationPipeline).toArray();
+      const result = await postCollection.aggregate(aggregationPipeline).skip(req.query?.skip * 5).limit(5).toArray();
       res.send(result);
     });
     app.post('/posts', verifyUser, async(req, res) => {
@@ -161,7 +162,7 @@ async function run() {
       const result = (await postCollection.countDocuments(filter)).toString();
       res.send(result);
     })
-    app.get('/totalPostsCount', verifyUser, verifyAdmin, async(req, res) => {
+    app.get('/totalPostsCount', async(req, res) => {
       const result = (await postCollection.countDocuments()).toString();
       res.send(result);
     })
@@ -170,8 +171,100 @@ async function run() {
       const option = {
         $sort : {publishedTime: -1}
       }
-      const result = await postCollection.find(filter, option).toArray();
+      const result = await postCollection.find(filter, option).skip(req.query?.skip * 10).limit(10).toArray();
       res.send(result);
+    })
+    app.get('/taggedPosts', async(req, res) => {
+      if (!req.query?.tag) return res.send([]);
+
+      filter = {tag: { $regex: req.query?.tag, $options: 'i' }}
+      const result = await postCollection.find(filter).project({title: 1}).toArray();
+      res.send(result);
+    })
+
+    // Vote Api
+    app.get('/voteState/:postId', verifyUser, async(req, res) => {
+      const filter = {email: req.userEmail, postId: req.params.postId};
+      const result = await voteCollection.findOne(filter);
+      res.send(result);
+    })
+    app.get('/upVote/:postId', verifyUser, async(req, res) => {
+      const filter = {email: req.userEmail, postId: req.params.postId};
+      const result = await voteCollection.findOne(filter);
+      let response = '';
+
+      if (!result) {
+        await voteCollection.insertOne({
+          postId: req.params.postId,
+          email: req.userEmail,
+          status: "upVote"
+        })
+        await postCollection.updateOne({_id: new ObjectId(req.params.postId)}, {$inc: {upVote: 1}});
+        response = "new";
+      } else {
+        if (result.status === 'nothing') {
+          const document = {
+            $set: {status: "upVote"}
+          }
+          await voteCollection.updateOne(filter, document);
+          await postCollection.updateOne({_id: new ObjectId(req.params.postId)}, {$inc: {upVote: 1}});
+          response = "new";
+        } else if (result.status === 'upVote') {
+          const document = {
+            $set: {status: "nothing"}
+          }
+          await voteCollection.updateOne(filter, document);
+          await postCollection.updateOne({_id: new ObjectId(req.params.postId)}, {$inc: {upVote: -1}});
+          response = "downgrade";
+        } else if (result.status === 'downVote') {
+          const document = {
+            $set: {status: "upVote"}
+          }
+          await voteCollection.updateOne(filter, document);
+          await postCollection.updateOne({_id: new ObjectId(req.params.postId)}, {$inc: {upVote: 1, downVote: -1}});
+          response = "down to up";
+        }
+      }
+      res.send({response});
+    })
+    app.get('/downVote/:postId', verifyUser, async(req, res) => {
+      const filter = {email: req.userEmail, postId: req.params.postId};
+      const result = await voteCollection.findOne(filter);
+      let response = '';
+
+      if (!result) {
+        await voteCollection.insertOne({
+          postId: req.params.postId,
+          email: req.userEmail,
+          status: "downVote"
+        })
+        await postCollection.updateOne({_id: new ObjectId(req.params.postId)}, {$inc: {downVote: 1}});
+        response = "new";
+      } else {
+        if (result.status === 'nothing') {
+          const document = {
+            $set: {status: "downVote"}
+          }
+          await voteCollection.updateOne(filter, document);
+          await postCollection.updateOne({_id: new ObjectId(req.params.postId)}, {$inc: {downVote: 1}});
+          response = "new";
+        } else if (result.status === 'upVote') {
+          const document = {
+            $set: {status: "downVote"}
+          }
+          await voteCollection.updateOne(filter, document);
+          await postCollection.updateOne({_id: new ObjectId(req.params.postId)}, {$inc: {upVote: -1, downVote: 1}});
+          response = "up to down";
+        } else if (result.status === 'downVote') {
+          const document = {
+            $set: {status: "nothing"}
+          }
+          await voteCollection.updateOne(filter, document);
+          await postCollection.updateOne({_id: new ObjectId(req.params.postId)}, {$inc: {downVote: -1}});
+          response = "downgrade";
+        }
+      }
+      res.send({response});
     })
 
     // Comments Api
@@ -181,7 +274,7 @@ async function run() {
     })
     app.get('/comments/:id', async(req, res) => {
       const filter = {postId: req.params.id};
-      const result = await commentCollection.find(filter).toArray();
+      const result = await commentCollection.find(filter).skip(req.query?.skip * 10).limit(10).toArray();
       res.send(result);
     })
     app.put('/comments/:id', verifyUser, async(req, res) => {
@@ -210,7 +303,7 @@ async function run() {
     })
     app.get('/reportedComments', verifyUser, verifyAdmin, async(req, res) => {
       const filter = {reportStatus: "Reported"};
-      const result = await commentCollection.find(filter).toArray();
+      const result = await commentCollection.find(filter).skip(req.query?.skip * 10).limit(10).toArray();
       res.send(result);
     })
     app.put('/reportedComments/:id', verifyUser, verifyAdmin, async(req, res) => {
@@ -224,6 +317,11 @@ async function run() {
     app.delete('/reportedComments/:id', verifyUser, verifyAdmin, async(req, res) => {
       const filter = {_id: new ObjectId(req.params.id)};
       const result = await commentCollection.deleteOne(filter);
+      res.send(result);
+    })
+    app.get('/postCommentsCount/:postId', verifyUser, async(req, res) => {
+      const filter = {postId: req.params.postId};
+      const result = (await commentCollection.countDocuments(filter)).toString();
       res.send(result);
     })
 
