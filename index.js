@@ -185,12 +185,16 @@ async function run() {
       res.send(result);
     });
     app.get("/posts/user/:email", verifyUser, async (req, res) => {
-      const filter = { "author.email": req.params.email };
-      const option = {
-        $sort: { publishedTime: -1 },
-      };
+      let aggregationPipeline = [
+        {
+          $match: { "author.email": req.params.email }
+        },
+        {
+          $sort: { publishedTime: -1 },
+        },
+      ];
       const result = await postCollection
-        .find(filter, option)
+        .aggregate(aggregationPipeline)
         .skip(req.query?.skip * 10)
         .limit(10)
         .toArray();
