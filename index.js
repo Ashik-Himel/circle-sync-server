@@ -4,6 +4,7 @@ const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const jwt = require("jsonwebtoken");
 const cookieParser = require("cookie-parser");
 require("dotenv").config();
+const stripe = require('stripe')(process.env.STRIPE_SECRET);
 
 const app = express();
 const port = process.env.PORT || 5001;
@@ -11,7 +12,6 @@ const port = process.env.PORT || 5001;
 app.use(
   cors({
     origin: [
-      "http://localhost:5173",
       "https://circle-sync-1.web.app",
       "https://circle-sync-1.firebaseapp.com",
     ],
@@ -50,10 +50,11 @@ async function run() {
         });
 
       jwt.verify(token, process.env.JWT_SECRET, (err, decode) => {
-        if (err || req.headers?.authorization !== decode?.email)
+        if (err || req.headers?.authorization !== decode?.email) {
           return res.status(401).send({
             message: "Unauthorize access",
           });
+        }
 
         req.userEmail = decode?.email;
         next();
@@ -129,6 +130,14 @@ async function run() {
       ).toString();
       res.send({ totalUsers, goldUsers });
     });
+    app.put('/updateUserRole', verifyUser, async(req, res) => {
+      const filter = {email: req.userEmail};
+      const document = {
+        $set: req.body
+      };
+      const result = await userCollection.updateOne(filter, document);
+      res.send(result);
+    })
 
     // Posts Api
     app.get("/posts", async (req, res) => {
@@ -435,8 +444,19 @@ async function run() {
       res.send(result);
     });
 
-    await client.db("admin").command({ ping: 1 });
-    console.log("MongoDB Connected!");
+    // Payment Api
+    app.post('/create-payment-intent', async(req, res) => {
+      const amount = parseInt(req.body.amount * 100);
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amount,
+        currency: "bdt",
+        payment_method_types: ["card"]
+      });
+
+      res.send({
+        clientSecret: paymentIntent.client_secret
+      })
+    })
   } finally {
     // await client.close();
   }
@@ -446,8 +466,6 @@ run().catch(console.dir);
 app.get("/", (req, res) => {
   res.send("Welcome to CircleSync's Server!");
 });
-app.listen(port, () => {
-  console.log(`Server is running on http://localhost:${port} !`);
-});
+app.listen(port);
 
 module.exports = app;
