@@ -78,11 +78,11 @@ async function run() {
       res.send(result);
     });
     app.get("/users", verifyUser, verifyAdmin, async (req, res) => {
-      const result = await userCollection
-        .find()
-        .skip(req.query?.skip * 10)
-        .limit(10)
-        .toArray();
+      let filter = {};
+      if (req.query?.search) {
+        filter = { name: { $regex: req.query.search, $options: 'i' } }
+      }
+      const result = await userCollection.find(filter).skip(req.query?.skip * 10).limit(10).toArray();
       res.send(result);
     });
     app.post("/users", async (req, res) => {
@@ -125,11 +125,12 @@ async function run() {
     });
     app.get("/usersCount", verifyUser, verifyAdmin, async (req, res) => {
       const totalUsers = (await userCollection.countDocuments()).toString();
-      const goldUsers = (
-        await userCollection.countDocuments({ role: "gold" })
-      ).toString();
-      res.send({ totalUsers, goldUsers });
+      res.send(totalUsers);
     });
+    app.get('/goldUsersCount', verifyUser, verifyAdmin, async(req, res) => {
+      const goldUsers = (await userCollection.countDocuments({role: 'gold'})).toString();
+      res.send(goldUsers);
+    })
     app.put('/updateUserRole', verifyUser, async(req, res) => {
       const filter = {email: req.userEmail};
       const document = {
@@ -353,33 +354,24 @@ async function run() {
     });
     app.get("/comments/:id/count", async (req, res) => {
       const filter = { postId: req.params.id };
-      const result = (
-        await commentCollection.countDocuments(filter)
-      ).toString();
+      const result = (await commentCollection.countDocuments(filter)).toString();
       res.send(result);
     });
     app.get("/commentsCount", verifyUser, async (req, res) => {
       const filter = { postAuthorEmail: req.query?.email };
-      const result = (
-        await commentCollection.countDocuments(filter)
-      ).toString();
+      const result = (await commentCollection.countDocuments(filter)).toString();
       res.send(result);
     });
-    app.get(
-      "/totalCommentsCount",
-      verifyUser,
-      verifyAdmin,
-      async (req, res) => {
-        const filter = { reportStatus: "Reported" };
-        const totalComments = (
-          await commentCollection.countDocuments()
-        ).toString();
-        const totalReportedComments = (
-          await commentCollection.countDocuments(filter)
-        ).toString();
-        res.send({ totalComments, totalReportedComments });
+    app.get("/totalCommentsCount", verifyUser, verifyAdmin, async (req, res) => {
+        const totalComments = (await commentCollection.countDocuments()).toString();
+        res.send(totalComments);
       }
     );
+    app.get('/reportedCommentsCount', verifyUser, verifyAdmin, async(req, res) => {
+      const filter = { reportStatus: "Reported" };
+      const totalReportedComments = (await commentCollection.countDocuments(filter)).toString();
+      res.send(totalReportedComments);
+    })
     app.get("/reportedComments", verifyUser, verifyAdmin, async (req, res) => {
       const filter = { reportStatus: "Reported" };
       const result = await commentCollection
