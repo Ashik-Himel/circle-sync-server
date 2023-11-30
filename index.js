@@ -336,12 +336,14 @@ async function run() {
       res.send(result);
     });
     app.get("/comments/:id", async (req, res) => {
+      if (req.query?.all === 'true') {
+        const filter = { postId: req.params.id };
+        const result = await commentCollection.find(filter).toArray();
+        res.send(result);
+        return;
+      }
       const filter = { postId: req.params.id };
-      const result = await commentCollection
-        .find(filter)
-        .skip(req.query?.skip * 10)
-        .limit(10)
-        .toArray();
+      const result = await commentCollection.find(filter).skip(req.query?.skip * 10).limit(10).toArray();
       res.send(result);
     });
     app.put("/comments/:id", verifyUser, async (req, res) => {
